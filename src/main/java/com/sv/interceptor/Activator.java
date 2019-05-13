@@ -22,9 +22,9 @@ public class Activator implements BundleActivator {
     private ServiceRegistration managedServiceRegistration;
     private Dictionary properties;
 
-    private void inject(Bus bus, Dictionary properties) throws Exception {
+    private void inject(Bus bus, String symbolicName, Dictionary properties) throws Exception {
         InterceptorsUtil util = new InterceptorsUtil(properties);
-        if (util.busDefined(bus.getId())) {
+        if (util.symbolicNameDefined(symbolicName)) {
 
             LOGGER.debug("Create LDAP interceptor");
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
@@ -50,9 +50,8 @@ public class Activator implements BundleActivator {
 
             public ServiceRegistration<?> addingService(ServiceReference<Bus> reference) {
                 Bus bus = bundleContext.getService(reference);
-
                 try {
-                    inject(bus, properties);
+                    inject(bus, reference.getBundle().getSymbolicName(), properties);
                 } catch (Exception e) {
                     LOGGER.error("Can't inject Syncope interceptor", e);
                 }
@@ -97,8 +96,8 @@ public class Activator implements BundleActivator {
 
                     InterceptorsUtil util = new InterceptorsUtil(properties);
                     remove(bus);
-                    if (util.busDefined(bus.getId())) {
-                        inject(bus, properties);
+                    if (util.symbolicNameDefined(bus.getId())) {
+                        inject(bus, reference.getBundle().getSymbolicName(), properties);
                     }
                 }
             } catch (Exception e) {

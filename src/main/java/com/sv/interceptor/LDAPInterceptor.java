@@ -129,11 +129,11 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                 LOGGER.debug("Get the user DN.");
                 userDnAndNamespace = cache.getUserDnAndNamespace(user);
                 if (userDnAndNamespace == null) {
-                    // security exception
+                    throw new SecurityException("Can't authenticate user");
                 }
             } catch (Exception e) {
                 LOGGER.warn("Can't connect to the LDAP server: {}", e.getMessage(), e);
-                // throw new LoginException("Can't connect to the LDAP server: " + e.getMessage());
+                throw new Fault(e);
             }
             // step 1.2, bind the user using DN
             DirContext context = null;
@@ -151,7 +151,7 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                 context.close();
             } catch (Exception e) {
                 LOGGER.warn("User " + user + " authentication failed.", e);
-                // throw new LoginException("Authentication failed: " + e.getMessage());
+                throw new Fault(e);
             } finally {
                 if (context != null) {
                     try {
@@ -161,7 +161,7 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                     }
                 }
             }
-            // here user is auhenticated
+            // here user is authenticated
 
             // 2. get the roles from LDAP
             //    Get the role from LDAP

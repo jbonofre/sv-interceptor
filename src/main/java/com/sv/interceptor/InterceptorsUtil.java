@@ -24,40 +24,40 @@ public class InterceptorsUtil {
     }
 
     /**
-     * Get the buses defined in the configuration.
+     * Get the symbolic name defined in the configuration.
      *
-     * @return the list of bus ID defined
+     * @return the list of bundle symbolic name defined
      */
-    public List<String> getBuses() throws Exception {
-        ArrayList<String> buses = new ArrayList<String>();
+    public List<String> getSymbolicNames() throws Exception {
+        ArrayList<String> symbolicNames = new ArrayList<String>();
         if (properties != null) {
             Enumeration keys = properties.keys();
             while (keys.hasMoreElements()) {
                 String key = (String) keys.nextElement();
-                LOGGER.debug("Adding CXF bus {}", key);
-                buses.add(key);
+                LOGGER.debug("Adding bus symbolic name{}", key);
+                symbolicNames.add(key);
             }
         }
-        return buses;
+        return symbolicNames;
     }
 
     /**
      * Get the roles defined for a given bus.
      *
-     * @param busId the CXF bus ID (or prefix string) as defined in the configuration.
+     * @param symbolicName the CXF bus synbolic name (or prefix string) as defined in the configuration.
      * @return the list of roles defined for the bus.
      */
-    private String[] getBusRoles(String busId) throws Exception {
+    private String[] getRoles(String symbolicName) throws Exception {
         if (properties != null) {
             Enumeration keys = properties.keys();
             while (keys.hasMoreElements()) {
                 String key = (String) keys.nextElement();
-                LOGGER.debug("Checking bus {} on regex {}", busId, key);
+                LOGGER.debug("Checking bus symbolic name {} on regex {}", symbolicName, key);
                 Pattern pattern = Pattern.compile(key);
-                Matcher matcher = pattern.matcher(busId);
+                Matcher matcher = pattern.matcher(symbolicName);
                 if (matcher.matches()) {
                     String roles = (String) properties.get(key);
-                    LOGGER.debug("Roles found for CXF bus {}: {}", busId, roles);
+                    LOGGER.debug("Roles found for bus symbolic name {}: {}", symbolicName, roles);
                     return roles.split(",");
                 }
             }
@@ -68,14 +68,14 @@ public class InterceptorsUtil {
     /**
      * Check if a bus ID is defined in the configuration
      *
-     * @param id the CXF bus ID to check.
+     * @param name the CXF bus symbolic name
      * @return true if the bus is defined in the configuration, false else.
      */
-    public boolean busDefined(String id) throws Exception {
-        List<String> buses = this.getBuses();
-        for (String bus : buses) {
-            Pattern pattern = Pattern.compile(bus);
-            Matcher matcher = pattern.matcher(id);
+    public boolean symbolicNameDefined(String name) throws Exception {
+        List<String> symbolicNames = this.getSymbolicNames();
+        for (String symbolicName : symbolicNames) {
+            Pattern pattern = Pattern.compile(symbolicName);
+            Matcher matcher = pattern.matcher(name);
             if (matcher.matches()) {
                 return true;
             }
@@ -86,13 +86,13 @@ public class InterceptorsUtil {
     /**
      * Check if one of the roles match the bus roles definition.
      *
-     * @param busId the bus ID.
+     * @param symbolicName the bus bundle symbolic name.
      * @param roles the roles to check.
      * @return true if at least one of the role match, false else.
      */
-    public boolean authorize(String busId, List<String> roles) throws Exception {
-        LOGGER.debug("Checking authorization for bus {}", busId);
-        String[] configuredRoles = this.getBusRoles(busId);
+    public boolean authorize(String symbolicName, List<String> roles) throws Exception {
+        LOGGER.debug("Checking authorization for bus symbolic name {}", symbolicName);
+        String[] configuredRoles = this.getRoles(symbolicName);
         if (configuredRoles != null) {
             for (String role : roles) {
                 LOGGER.debug("Checking authorization for role {}", role);
