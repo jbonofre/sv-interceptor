@@ -53,6 +53,10 @@ public class Activator implements BundleActivator {
     }
 
     public void start(final BundleContext bundleContext) throws Exception {
+        Dictionary<String, String> properties = new Hashtable<>();
+        properties.put(Constants.SERVICE_PID, CONFIG_PID);
+        managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
+
         LOGGER.debug("Starting CXF buses cxfBusesTracker");
         cxfBusesTracker = new ServiceTracker<Bus, ServiceRegistration>(bundleContext, Bus.class, null) {
 
@@ -106,9 +110,6 @@ public class Activator implements BundleActivator {
             }
         };
         camelContextsTracker.open();
-        Dictionary<String, String> properties = new Hashtable<>();
-        properties.put(Constants.SERVICE_PID, CONFIG_PID);
-        managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
     }
 
     public void stop(BundleContext bundleContext) throws Exception {
