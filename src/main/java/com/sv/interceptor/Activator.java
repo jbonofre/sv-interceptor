@@ -141,6 +141,26 @@ public class Activator implements BundleActivator {
                         inject(bus, reference.getBundle().getSymbolicName(), properties);
                     }
                 }
+                references = bundleContext.getServiceReferences(CamelContext.class.getName(), null);
+                for (ServiceReference reference : references) {
+                    CamelContext camelContext = (CamelContext) bundleContext.getService(reference);
+                    for (Endpoint endpoint : camelContext.getEndpoints()) {
+                        if (endpoint instanceof CxfEndpoint) {
+                            remove(((CxfEndpoint) endpoint).getBus());
+                            InterceptorsUtil util = new InterceptorsUtil(properties);
+                            if (util.symbolicNameDefined(reference.getBundle().getSymbolicName())) {
+                                inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
+                            }
+                        }
+                        if (endpoint instanceof CxfEndpoint) {
+                            remove(((CxfRsEndpoint) endpoint).getBus());
+                            InterceptorsUtil util = new InterceptorsUtil(properties);
+                            if (util.symbolicNameDefined(reference.getBundle().getSymbolicName())) {
+                                inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
+                            }
+                        }
+                    }
+                }
             } catch (Exception e) {
                 throw new ConfigurationException("", "Can't update configuration", e);
             }
