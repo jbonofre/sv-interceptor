@@ -2,10 +2,13 @@ package com.sv.interceptor;
 
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
+import org.apache.camel.Route;
 import org.apache.camel.component.cxf.CxfEndpoint;
+import org.apache.camel.component.cxf.jaxrs.CxfRsConsumer;
 import org.apache.camel.component.cxf.jaxrs.CxfRsEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.cxf.Bus;
+import org.apache.cxf.endpoint.Server;
 import org.apache.cxf.interceptor.Interceptor;
 import org.osgi.framework.*;
 import org.osgi.service.cm.ConfigurationException;
@@ -84,6 +87,15 @@ public class Activator implements BundleActivator {
 
             public ServiceRegistration<?> addingService(ServiceReference<CamelContext> reference) {
                 DefaultCamelContext camelContext = (DefaultCamelContext) bundleContext.getService(reference);
+                for (Route route : camelContext.getRoutes()) {
+                    if (route.getConsumer() instanceof CxfRsConsumer) {
+                        Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
+                        LDAPInterceptor svInterceptor = new LDAPInterceptor();
+                        svInterceptor.setProperties(properties);
+                        server.getEndpoint().getInInterceptors().add(svInterceptor);
+                    }
+                }
+                /*
                 LOGGER.debug("Tracking CamelContext {}", camelContext.getName());
                 for (Endpoint endpoint : camelContext.getEndpoints()) {
                     LOGGER.debug("Checking endpoint {}", endpoint.getEndpointUri());
@@ -101,6 +113,7 @@ public class Activator implements BundleActivator {
                         }
                     }
                 }
+                */
                 return null;
             }
 
