@@ -3,6 +3,7 @@ package com.sv.interceptor;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Endpoint;
 import org.apache.camel.Route;
+import org.apache.camel.component.cxf.CxfConsumer;
 import org.apache.camel.component.cxf.CxfEndpoint;
 import org.apache.camel.component.cxf.jaxrs.CxfRsConsumer;
 import org.apache.camel.component.cxf.jaxrs.CxfRsEndpoint;
@@ -90,6 +91,11 @@ public class Activator implements BundleActivator {
                 for (Route route : camelContext.getRoutes()) {
                     if (route.getConsumer() instanceof CxfRsConsumer) {
                         Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
+                        LDAPInterceptor svInterceptor = new LDAPInterceptor();
+                        svInterceptor.setProperties(properties);
+                        server.getEndpoint().getInInterceptors().add(svInterceptor);
+                    } else if (route.getConsumer() instanceof CxfConsumer) {
+                        Server server = ((CxfConsumer) route.getConsumer()).getServer();
                         LDAPInterceptor svInterceptor = new LDAPInterceptor();
                         svInterceptor.setProperties(properties);
                         server.getEndpoint().getInInterceptors().add(svInterceptor);
