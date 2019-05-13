@@ -34,7 +34,7 @@ public class InterceptorsUtil {
             Enumeration keys = properties.keys();
             while (keys.hasMoreElements()) {
                 String key = (String) keys.nextElement();
-                LOGGER.debug("Adding bus symbolic name{}", key);
+                LOGGER.debug("Adding bus symbolic name {}", key);
                 symbolicNames.add(key);
             }
         }

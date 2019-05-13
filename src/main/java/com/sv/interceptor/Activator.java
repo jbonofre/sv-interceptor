@@ -23,8 +23,10 @@ public class Activator implements BundleActivator {
     private Dictionary properties;
 
     private void inject(Bus bus, String symbolicName, Dictionary properties) throws Exception {
+        LOGGER.debug("Injecting LDAP interceptor ({})", symbolicName);
         InterceptorsUtil util = new InterceptorsUtil(properties);
         if (util.symbolicNameDefined(symbolicName)) {
+            LOGGER.debug("Symbolic name found");
 
             LOGGER.debug("Create LDAP interceptor");
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
@@ -38,7 +40,7 @@ public class Activator implements BundleActivator {
     private void remove(Bus bus) {
         for (Interceptor interceptor : bus.getInInterceptors()) {
             if (interceptor instanceof LDAPInterceptor) {
-                LOGGER.debug("Removing old Syncope interceptor");
+                LOGGER.debug("Removing old sv interceptor");
                 bus.getInInterceptors().remove(interceptor);
             }
         }
@@ -53,7 +55,7 @@ public class Activator implements BundleActivator {
                 try {
                     inject(bus, reference.getBundle().getSymbolicName(), properties);
                 } catch (Exception e) {
-                    LOGGER.error("Can't inject Syncope interceptor", e);
+                    LOGGER.error("Can't inject sv interceptor", e);
                 }
 
                 return null;
@@ -67,7 +69,7 @@ public class Activator implements BundleActivator {
 
         };
         cxfBusesTracker.open();
-        Dictionary<String, String> properties = new Hashtable<String, String>();
+        Dictionary<String, String> properties = new Hashtable<>();
         properties.put(Constants.SERVICE_PID, CONFIG_PID);
         managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
     }
@@ -96,7 +98,7 @@ public class Activator implements BundleActivator {
 
                     InterceptorsUtil util = new InterceptorsUtil(properties);
                     remove(bus);
-                    if (util.symbolicNameDefined(bus.getId())) {
+                    if (util.symbolicNameDefined(reference.getBundle().getSymbolicName())) {
                         inject(bus, reference.getBundle().getSymbolicName(), properties);
                     }
                 }
