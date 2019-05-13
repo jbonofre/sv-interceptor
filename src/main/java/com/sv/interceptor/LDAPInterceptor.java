@@ -25,6 +25,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
 
+import javax.naming.Context;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.InitialDirContext;
 import javax.security.auth.Subject;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -34,19 +37,19 @@ import java.util.*;
 /**
  * This interceptor just get a base authorization, and create a UsernameToken delegated to the Syncope interceptor
  */
-public class LdapInterceptor extends AbstractPhaseInterceptor<Message> {
+public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
 
-    private final Logger LOGGER = LoggerFactory.getLogger(LdapInterceptor.class);
+    private final Logger LOGGER = LoggerFactory.getLogger(LDAPInterceptor.class);
 
     private Validator validator;
 
     private Dictionary properties;
 
-    public LdapInterceptor() {
+    public LDAPInterceptor() {
         this(Phase.READ);
     }
 
-    public LdapInterceptor(String phase) {
+    public LDAPInterceptor(String phase) {
         super(phase);
     }
 
@@ -114,13 +117,55 @@ public class LdapInterceptor extends AbstractPhaseInterceptor<Message> {
                 ((WSUsernameTokenPrincipalImpl)p).setPassword(policy.getPassword());
             }
 
-            // TODO LDAP auth
             // 1. validate authentication with token
             //       LDAP auth(token.getName(), token.getPassword());
+            String user = token.getName();
+            String password = token.getPassword();
+            LDAPOptions options = new LDAPOptions(properties);
+            LDAPCache cache = LDAPCache.getCache(options);
+            // step 1.1, get DN
+            final String[] userDnAndNamespace;
+            try {
+                LOGGER.debug("Get the user DN.");
+                userDnAndNamespace = cache.getUserDnAndNamespace(user);
+                if (userDnAndNamespace == null) {
+                    // security exception
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Can't connect to the LDAP server: {}", e.getMessage(), e);
+                // throw new LoginException("Can't connect to the LDAP server: " + e.getMessage());
+            }
+            // step 1.2, bind the user using DN
+            DirContext context = null;
+            try {
+                // switch the credentials to the Karaf login user so that we can verify his password is correct
+                LOGGER.debug("Bind user (authentication).");
+                Hashtable<String, Object> env = options.getEnv();
+                env.put(Context.SECURITY_AUTHENTICATION, options.getAuthentication());
+                LOGGER.debug("Set the security principal for " + userDnAndNamespace[0] + "," + options.getUserBaseDn());
+                env.put(Context.SECURITY_PRINCIPAL, userDnAndNamespace[0] + "," + options.getUserBaseDn());
+                env.put(Context.SECURITY_CREDENTIALS, password);
+                LOGGER.debug("Binding the user.");
+                context = new InitialDirContext(env);
+                LOGGER.debug("User " + user + " successfully bound.");
+                context.close();
+            } catch (Exception e) {
+                LOGGER.warn("User " + user + " authentication failed.", e);
+                // throw new LoginException("Authentication failed: " + e.getMessage());
+            } finally {
+                if (context != null) {
+                    try {
+                        context.close();
+                    } catch (Exception e) {
+                        // ignore
+                    }
+                }
+            }
+            // here user is auhenticated
+
             // 2. get the roles from LDAP
-            //
-            List<String> roles = new ArrayList<String>();
             //    Get the role from LDAP
+            String[] roles = cache.getUserRoles(user, userDnAndNamespace[0], userDnAndNamespace[1]);
 
             Subject subject = new Subject();
             subject.getPrincipals().add(p);

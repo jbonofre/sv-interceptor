@@ -16,7 +16,7 @@ public class Activator implements BundleActivator {
 
     private final static Logger LOGGER = LoggerFactory.getLogger(Activator.class);
 
-    private final static String CONFIG_PID = "com.synaltic.cxf.syncope.authorization";
+    private final static String CONFIG_PID = "com.sv.interceptor.security";
 
     private ServiceTracker<Bus, ServiceRegistration> cxfBusesTracker;
     private ServiceRegistration managedServiceRegistration;
@@ -26,18 +26,18 @@ public class Activator implements BundleActivator {
         InterceptorsUtil util = new InterceptorsUtil(properties);
         if (util.busDefined(bus.getId())) {
 
-            LOGGER.debug("Create Syncope interceptor");
-            LdapInterceptor syncopeInterceptor = new LdapInterceptor();
-            syncopeInterceptor.setProperties(properties);
+            LOGGER.debug("Create LDAP interceptor");
+            LDAPInterceptor svInterceptor = new LDAPInterceptor();
+            svInterceptor.setProperties(properties);
 
-            LOGGER.debug("Injecting Syncope interceptor in bus {}", bus.getId());
-            bus.getInInterceptors().add(syncopeInterceptor);
+            LOGGER.debug("Injecting LDAP interceptor in bus {}", bus.getId());
+            bus.getInInterceptors().add(svInterceptor);
         }
     }
 
     private void remove(Bus bus) {
         for (Interceptor interceptor : bus.getInInterceptors()) {
-            if (interceptor instanceof LdapInterceptor) {
+            if (interceptor instanceof LDAPInterceptor) {
                 LOGGER.debug("Removing old Syncope interceptor");
                 bus.getInInterceptors().remove(interceptor);
             }
