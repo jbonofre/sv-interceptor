@@ -1,5 +1,10 @@
 package com.sv.interceptor;
 
+import org.apache.camel.CamelContext;
+import org.apache.camel.Endpoint;
+import org.apache.camel.component.cxf.CxfEndpoint;
+import org.apache.camel.component.cxf.jaxrs.CxfRsEndpoint;
+import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.cxf.Bus;
 import org.apache.cxf.interceptor.Interceptor;
 import org.osgi.framework.*;
@@ -19,6 +24,7 @@ public class Activator implements BundleActivator {
     private final static String CONFIG_PID = "com.sv.interceptor.security";
 
     private ServiceTracker<Bus, ServiceRegistration> cxfBusesTracker;
+    private ServiceTracker<CamelContext, ServiceRegistration> camelContextsTracker;
     private ServiceRegistration managedServiceRegistration;
     private Dictionary properties;
 
@@ -69,6 +75,37 @@ public class Activator implements BundleActivator {
 
         };
         cxfBusesTracker.open();
+        LOGGER.debug("Starting CamelContexts tracker");
+        camelContextsTracker = new ServiceTracker<CamelContext, ServiceRegistration>(bundleContext, CamelContext.class, null) {
+
+            public ServiceRegistration<?> addingService(ServiceReference<CamelContext> reference) {
+                DefaultCamelContext camelContext = (DefaultCamelContext) bundleContext.getService(reference);
+                LOGGER.debug("Tracking CamelContext {}", camelContext.getName());
+                for (Endpoint endpoint : camelContext.getEndpoints()) {
+                    LOGGER.debug("Checking endpoint {}", endpoint.getEndpointUri());
+                    if (endpoint instanceof CxfEndpoint) {
+                        try {
+                            inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
+                        } catch (Exception e) {
+                            LOGGER.error("Can't inject sv interceptor", e);
+                        }
+                    } else if (endpoint instanceof CxfRsEndpoint) {
+                        try {
+                            inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
+                        } catch (Exception e) {
+                            LOGGER.error("Can't inject sv interceptor", e);
+                        }
+                    }
+                }
+                return null;
+            }
+
+            public void removedService(ServiceReference<CamelContext> reference, ServiceRegistration reg) {
+                reg.unregister();
+                super.removedService(reference, reg);
+            }
+        };
+        camelContextsTracker.open();
         Dictionary<String, String> properties = new Hashtable<>();
         properties.put(Constants.SERVICE_PID, CONFIG_PID);
         managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
@@ -77,6 +114,8 @@ public class Activator implements BundleActivator {
     public void stop(BundleContext bundleContext) throws Exception {
         if (cxfBusesTracker != null)
             cxfBusesTracker.close();
+        if (camelContextsTracker != null)
+            camelContextsTracker.close();
         if (managedServiceRegistration != null)
             managedServiceRegistration.unregister();
     }

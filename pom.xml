@@ -9,6 +9,7 @@
     <packaging>bundle</packaging>
 
     <properties>
+        <camel.version>2.21.1</camel.version>
         <cxf.version>3.2.1</cxf.version>
     </properties>
 
@@ -27,6 +28,16 @@
             <groupId>org.apache.cxf</groupId>
             <artifactId>cxf-rt-rs-security-xml</artifactId>
             <version>${cxf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.camel</groupId>
+            <artifactId>camel-core</artifactId>
+            <version>${camel.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.camel</groupId>
+            <artifactId>camel-cxf</artifactId>
+            <version>${camel.version}</version>
         </dependency>
         <dependency>
             <groupId>org.osgi</groupId>
