@@ -12,12 +12,15 @@ import org.apache.cxf.Bus;
 import org.apache.cxf.endpoint.Server;
 import org.apache.cxf.interceptor.Interceptor;
 import org.osgi.framework.*;
+import org.osgi.service.cm.Configuration;
+import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
 import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Dictionary;
 import java.util.Hashtable;
 
@@ -26,11 +29,13 @@ public class Activator implements BundleActivator {
     private final static Logger LOGGER = LoggerFactory.getLogger(Activator.class);
 
     private final static String CONFIG_PID = "com.sv.interceptor.security";
+    private final static String CONFIG_AUTH_PID = "com.sv.interceptor.security.ldap";
 
     private ServiceTracker<Bus, ServiceRegistration> cxfBusesTracker;
     private ServiceTracker<CamelContext, ServiceRegistration> camelContextsTracker;
     private ServiceRegistration managedServiceRegistration;
     private Dictionary properties;
+    private Dictionary LDAPProperties;
 
     private void inject(Bus bus, String symbolicName, Dictionary properties) throws Exception {
         LOGGER.debug("Injecting LDAP interceptor ({})", symbolicName);
@@ -41,7 +46,8 @@ public class Activator implements BundleActivator {
 
             LOGGER.debug("Create LDAP interceptor");
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
-            svInterceptor.setProperties(matchingRules);
+            svInterceptor.setRules(matchingRules);
+            svInterceptor.setOptions(LDAPProperties);
 
             LOGGER.debug("Injecting LDAP interceptor in bus {}", bus.getId());
             bus.getInInterceptors().add(svInterceptor);
@@ -60,6 +66,36 @@ public class Activator implements BundleActivator {
     public void start(final BundleContext bundleContext) throws Exception {
         Dictionary<String, String> properties = new Hashtable<>();
         properties.put(Constants.SERVICE_PID, CONFIG_PID);
+
+        // Get LDAP configuration and test it
+        ServiceReference configAdminServiceRef = bundleContext.getServiceReference(ConfigurationAdmin.class.getName());
+        ConfigurationAdmin configAdminService = (ConfigurationAdmin) bundleContext.getService( configAdminServiceRef );
+
+        Configuration configuration;
+        try {
+            configuration = configAdminService.getConfiguration(CONFIG_AUTH_PID);
+        } catch(IOException e) {
+            LOGGER.error("Cannot read LDAP configuration file (check {}.cfg)", CONFIG_AUTH_PID);
+            blockEverything(bundleContext);
+            return;
+        }
+
+        try {
+            LDAPProperties = configuration.getProperties();
+            LOGGER.info(LDAPProperties.toString());
+            LDAPOptions options = new LDAPOptions(LDAPProperties);
+            LDAPCache cache = LDAPCache.getCache(options);
+            cache.open();
+            cache.close();
+        } catch(Exception ex) {
+            LOGGER.error(ex.getMessage());
+            LOGGER.error("Cannot connect to LDAP server;");
+            LOGGER.error("Check LDAP configuration file (default location : etc/{}.cfg)", CONFIG_AUTH_PID);
+            blockEverything(bundleContext);
+            return;
+        }
+        //LDAP configuration seems OK
+
         managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
 
         LOGGER.debug("Starting CXF buses cxfBusesTracker");
@@ -93,12 +129,14 @@ public class Activator implements BundleActivator {
                     if (route.getConsumer() instanceof CxfRsConsumer) {
                         Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
                         LDAPInterceptor svInterceptor = new LDAPInterceptor();
-                        svInterceptor.setProperties(properties);
+                        svInterceptor.setRules(properties);
+                        svInterceptor.setOptions(LDAPProperties);
                         server.getEndpoint().getInInterceptors().add(svInterceptor);
                     } else if (route.getConsumer() instanceof CxfConsumer) {
                         Server server = ((CxfConsumer) route.getConsumer()).getServer();
                         LDAPInterceptor svInterceptor = new LDAPInterceptor();
-                        svInterceptor.setProperties(properties);
+                        svInterceptor.setRules(properties);
+                        svInterceptor.setOptions(LDAPProperties);
                         server.getEndpoint().getInInterceptors().add(svInterceptor);
                     }
                 }
@@ -169,7 +207,7 @@ public class Activator implements BundleActivator {
                             InterceptorsUtil util = new InterceptorsUtil(properties);
                             inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
                         }
-                        if (endpoint instanceof CxfEndpoint) {
+                        if (endpoint instanceof CxfRsEndpoint) {
                             remove(((CxfRsEndpoint) endpoint).getBus());
                             InterceptorsUtil util = new InterceptorsUtil(properties);
                             inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
@@ -180,6 +218,12 @@ public class Activator implements BundleActivator {
                 throw new ConfigurationException("", "Can't update configuration", e);
             }
         }
+    }
+
+    public void blockEverything(BundleContext bundleContext) throws Exception {
+        // TODO : implementation
+        // New services should be blockec too
+        LOGGER.warn("Block everything !!!");
     }
 
 }

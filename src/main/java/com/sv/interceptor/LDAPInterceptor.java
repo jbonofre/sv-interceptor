@@ -43,7 +43,9 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
 
     private Validator validator;
 
-    private Dictionary properties;
+    private Dictionary options;
+
+    private Dictionary rules;
 
     public LDAPInterceptor() {
         this(Phase.READ);
@@ -121,8 +123,8 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
             //       LDAP auth(token.getName(), token.getPassword());
             String user = token.getName();
             String password = token.getPassword();
-            LDAPOptions options = new LDAPOptions(properties);
-            LDAPCache cache = LDAPCache.getCache(options);
+            LDAPOptions ldapOptions = new LDAPOptions(options);
+            LDAPCache cache = LDAPCache.getCache(ldapOptions);
             // step 1.1, get DN
             final String[] userDnAndNamespace;
             try {
@@ -140,10 +142,10 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
             try {
                 // switch the credentials to the Karaf login user so that we can verify his password is correct
                 LOGGER.debug("Bind user (authentication).");
-                Hashtable<String, Object> env = options.getEnv();
-                env.put(Context.SECURITY_AUTHENTICATION, options.getAuthentication());
-                LOGGER.debug("Set the security principal for " + userDnAndNamespace[0] + "," + options.getUserBaseDn());
-                env.put(Context.SECURITY_PRINCIPAL, userDnAndNamespace[0] + "," + options.getUserBaseDn());
+                Hashtable<String, Object> env = ldapOptions.getEnv();
+                env.put(Context.SECURITY_AUTHENTICATION, ldapOptions.getAuthentication());
+                LOGGER.debug("Set the security principal for " + userDnAndNamespace[0] + "," + ldapOptions.getUserBaseDn());
+                env.put(Context.SECURITY_PRINCIPAL, userDnAndNamespace[0] + "," + ldapOptions.getUserBaseDn());
                 env.put(Context.SECURITY_CREDENTIALS, password);
                 LOGGER.debug("Binding the user.");
                 context = new InitialDirContext(env);
@@ -209,8 +211,12 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
         this.validator = validator;
     }
 
-    public void setProperties(Dictionary properties) {
-        this.properties = properties;
+    public void setOptions(Dictionary options) {
+        this.options = options;
+    }
+
+    public void setRules(Dictionary rules) {
+        this.rules = rules;
     }
 
 }
