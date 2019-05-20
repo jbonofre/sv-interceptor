@@ -43,7 +43,6 @@ public class Activator implements BundleActivator {
         Dictionary matchingRules = util.getMatchingRules(symbolicName);
         if (matchingRules.size() > 0) {
             LOGGER.debug("Symbolic name found");
-
             LOGGER.debug("Create LDAP interceptor");
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
             svInterceptor.setRules(matchingRules);
@@ -82,7 +81,6 @@ public class Activator implements BundleActivator {
 
         try {
             LDAPProperties = configuration.getProperties();
-            LOGGER.info(LDAPProperties.toString());
             LDAPOptions options = new LDAPOptions(LDAPProperties);
             LDAPCache cache = LDAPCache.getCache(options);
             cache.open();
