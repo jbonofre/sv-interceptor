@@ -37,27 +37,57 @@ public class Activator implements BundleActivator {
     private Dictionary properties;
     private Dictionary LDAPProperties;
 
-    private void inject(Bus bus, String symbolicName, Dictionary properties) throws Exception {
-        LOGGER.debug("Injecting LDAP interceptor ({})", symbolicName);
+    private void inject(Bus bus, String symbolicName) throws Exception {
+        LOGGER.debug("Check rules before adding LDAP interceptor (bus {})", symbolicName);
         InterceptorsUtil util = new InterceptorsUtil(properties);
         Dictionary matchingRules = util.getMatchingRules(symbolicName);
         if (matchingRules.size() > 0) {
-            LOGGER.debug("Symbolic name found");
-            LOGGER.debug("Create LDAP interceptor");
+            LOGGER.debug("Matching rules found for bus {}, start LDAPInterceptor injection", symbolicName);
+            LOGGER.debug("Creating LDAP interceptor for bus {}", symbolicName);
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
             svInterceptor.setRules(matchingRules);
             svInterceptor.setOptions(LDAPProperties);
 
-            LOGGER.debug("Injecting LDAP interceptor in bus {}", bus.getId());
+            LOGGER.debug("Injecting LDAP interceptor in bus {}", symbolicName);
             bus.getInInterceptors().add(svInterceptor);
+            LOGGER.info("LDAP interceptor injected in bus {}", symbolicName);
+        } else {
+            LOGGER.debug("No matching rules found for bus {}, skip it", symbolicName);
+        }
+    }
+
+    private void inject(org.apache.cxf.endpoint.Endpoint endpoint, String symbolicName) throws Exception {
+        LOGGER.debug("Check rules before adding LDAP interceptor (endpoint {})", symbolicName);
+        InterceptorsUtil util = new InterceptorsUtil(properties);
+        Dictionary matchingRules = util.getMatchingRules(symbolicName);
+        if (matchingRules.size() > 0) {
+            LOGGER.debug("Matching rules found for endpoint {}, start LDAPInterceptor injection", symbolicName);
+            LOGGER.debug("Creating LDAP interceptor for endpoint {}", symbolicName);
+            LDAPInterceptor svInterceptor = new LDAPInterceptor();
+            svInterceptor.setRules(matchingRules);
+            svInterceptor.setOptions(LDAPProperties);
+
+            LOGGER.debug("Injecting LDAP interceptor in endpoint {}", symbolicName);
+            endpoint.getInInterceptors().add(svInterceptor);
+        } else {
+            LOGGER.debug("No matching rules found for endpoint {}, skip it", symbolicName);
         }
     }
 
     private void remove(Bus bus) {
         for (Interceptor interceptor : bus.getInInterceptors()) {
             if (interceptor instanceof LDAPInterceptor) {
-                LOGGER.debug("Removing old sv interceptor");
+                LOGGER.debug("Removing old sv interceptor from bus");
                 bus.getInInterceptors().remove(interceptor);
+            }
+        }
+    }
+
+    private void remove(org.apache.cxf.endpoint.Endpoint endpoint) {
+        for (Interceptor interceptor : endpoint.getInInterceptors()) {
+            if (interceptor instanceof LDAPInterceptor) {
+                LOGGER.debug("Removing old sv interceptor from endpoint");
+                endpoint.getInInterceptors().remove(interceptor);
             }
         }
     }
@@ -101,8 +131,9 @@ public class Activator implements BundleActivator {
 
             public ServiceRegistration<?> addingService(ServiceReference<Bus> reference) {
                 Bus bus = bundleContext.getService(reference);
+                LOGGER.debug("Look at bus {}", bus.getId());
                 try {
-                    inject(bus, reference.getBundle().getSymbolicName(), properties);
+                    inject(bus, reference.getBundle().getSymbolicName());
                 } catch (Exception e) {
                     LOGGER.error("Can't inject sv interceptor", e);
                 }
@@ -120,43 +151,27 @@ public class Activator implements BundleActivator {
         cxfBusesTracker.open();
         LOGGER.debug("Starting CamelContexts tracker");
         camelContextsTracker = new ServiceTracker<CamelContext, ServiceRegistration>(bundleContext, CamelContext.class, null) {
-
             public ServiceRegistration<?> addingService(ServiceReference<CamelContext> reference) {
                 DefaultCamelContext camelContext = (DefaultCamelContext) bundleContext.getService(reference);
                 for (Route route : camelContext.getRoutes()) {
                     if (route.getConsumer() instanceof CxfRsConsumer) {
                         Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
-                        LDAPInterceptor svInterceptor = new LDAPInterceptor();
-                        svInterceptor.setRules(properties);
-                        svInterceptor.setOptions(LDAPProperties);
-                        server.getEndpoint().getInInterceptors().add(svInterceptor);
+                        LOGGER.debug("Look at endpoint {}", reference.getBundle().getSymbolicName());
+                        try {
+                            inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
+                        } catch (Exception e) {
+                            LOGGER.error("Can't inject sv interceptor on CxfRsConsumer", e);
+                        }
                     } else if (route.getConsumer() instanceof CxfConsumer) {
                         Server server = ((CxfConsumer) route.getConsumer()).getServer();
-                        LDAPInterceptor svInterceptor = new LDAPInterceptor();
-                        svInterceptor.setRules(properties);
-                        svInterceptor.setOptions(LDAPProperties);
-                        server.getEndpoint().getInInterceptors().add(svInterceptor);
-                    }
-                }
-                /*
-                LOGGER.debug("Tracking CamelContext {}", camelContext.getName());
-                for (Endpoint endpoint : camelContext.getEndpoints()) {
-                    LOGGER.debug("Checking endpoint {}", endpoint.getEndpointUri());
-                    if (endpoint instanceof CxfEndpoint) {
+                        LOGGER.debug("Look at endpoint {}", reference.getBundle().getSymbolicName());
                         try {
-                            inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
+                            inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
                         } catch (Exception e) {
-                            LOGGER.error("Can't inject sv interceptor", e);
-                        }
-                    } else if (endpoint instanceof CxfRsEndpoint) {
-                        try {
-                            inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
-                        } catch (Exception e) {
-                            LOGGER.error("Can't inject sv interceptor", e);
+                            LOGGER.error("Can't inject sv interceptor on CxfConsumer", e);
                         }
                     }
                 }
-                */
                 return null;
             }
 
@@ -187,28 +202,35 @@ public class Activator implements BundleActivator {
 
         public void updated(Dictionary<String, ?> config) throws ConfigurationException {
             properties = config;
+            LOGGER.debug("Configuration updated");
             try {
+
                 ServiceReference[] references = bundleContext.getServiceReferences(Bus.class.getName(), null);
                 for (ServiceReference reference : references) {
                     Bus bus = (Bus) bundleContext.getService(reference);
-
-                    InterceptorsUtil util = new InterceptorsUtil(properties);
                     remove(bus);
-                    inject(bus, reference.getBundle().getSymbolicName(), properties);
+                    inject(bus, reference.getBundle().getSymbolicName());
                 }
                 references = bundleContext.getServiceReferences(CamelContext.class.getName(), null);
                 for (ServiceReference reference : references) {
                     CamelContext camelContext = (CamelContext) bundleContext.getService(reference);
-                    for (Endpoint endpoint : camelContext.getEndpoints()) {
-                        if (endpoint instanceof CxfEndpoint) {
-                            remove(((CxfEndpoint) endpoint).getBus());
-                            InterceptorsUtil util = new InterceptorsUtil(properties);
-                            inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
-                        }
-                        if (endpoint instanceof CxfRsEndpoint) {
-                            remove(((CxfRsEndpoint) endpoint).getBus());
-                            InterceptorsUtil util = new InterceptorsUtil(properties);
-                            inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
+                    for (Route route : camelContext.getRoutes()) {
+                        if (route.getConsumer() instanceof CxfRsConsumer) {
+                            Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
+                            try {
+                                remove(server.getEndpoint());
+                                inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
+                            } catch (Exception e) {
+                                LOGGER.error("Can't inject sv interceptor on CxfRsConsumer", e);
+                            }
+                        } else if (route.getConsumer() instanceof CxfConsumer) {
+                            Server server = ((CxfConsumer) route.getConsumer()).getServer();
+                            try {
+                                remove(server.getEndpoint());
+                                inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
+                            } catch (Exception e) {
+                                LOGGER.error("Can't inject sv interceptor on CxfConsumer", e);
+                            }
                         }
                     }
                 }
