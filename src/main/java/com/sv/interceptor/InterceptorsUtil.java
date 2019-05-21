@@ -3,10 +3,7 @@ package com.sv.interceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Dictionary;
-import java.util.Enumeration;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,23 +20,6 @@ public class InterceptorsUtil {
         this.properties = properties;
     }
 
-    /**
-     * Get the symbolic name defined in the configuration.
-     *
-     * @return the list of bundle symbolic name defined
-     */
-    public List<String> getSymbolicNames() throws Exception {
-        ArrayList<String> symbolicNames = new ArrayList<String>();
-        if (properties != null) {
-            Enumeration keys = properties.keys();
-            while (keys.hasMoreElements()) {
-                String key = (String) keys.nextElement();
-                LOGGER.debug("Adding bus symbolic name {}", key);
-                symbolicNames.add(key);
-            }
-        }
-        return symbolicNames;
-    }
 
     /**
      * Get the roles defined for a given bus.
@@ -71,16 +51,24 @@ public class InterceptorsUtil {
      * @param name the CXF bus symbolic name
      * @return true if the bus is defined in the configuration, false else.
      */
-    public boolean symbolicNameDefined(String name) throws Exception {
-        List<String> symbolicNames = this.getSymbolicNames();
-        for (String symbolicName : symbolicNames) {
-            Pattern pattern = Pattern.compile(symbolicName);
-            Matcher matcher = pattern.matcher(name);
-            if (matcher.matches()) {
-                return true;
+    public Dictionary getMatchingRules(String name) throws Exception {
+        Dictionary matchingRules = new Hashtable();
+        if (properties != null) {
+            Enumeration keys = properties.keys();
+            while (keys.hasMoreElements()) {
+                String key = (String) keys.nextElement();
+                String symbolicName = key.split(":")[0];
+                LOGGER.debug("Check matching with {}", symbolicName);
+                Pattern pattern = Pattern.compile(symbolicName);
+                Matcher matcher = pattern.matcher(name);
+                if (matcher.matches()) {
+                    matchingRules.put(key, properties.get(key));
+                }
             }
         }
-        return false;
+
+
+        return matchingRules;
     }
 
     /**
