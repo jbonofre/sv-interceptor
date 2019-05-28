@@ -1,5 +1,6 @@
 package com.sv.interceptor;
 
+import org.osgi.framework.Constants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +20,6 @@ public class InterceptorsUtil {
     public InterceptorsUtil(Dictionary properties) {
         this.properties = properties;
     }
-
 
     /**
      * Get the roles defined for a given bus.
@@ -52,22 +52,25 @@ public class InterceptorsUtil {
      * @return true if the bus is defined in the configuration, false else.
      */
     public Dictionary getMatchingRules(String name) throws Exception {
+        LOGGER.debug("Check if symbolic name {} matches with any rule", name);
         Dictionary matchingRules = new Hashtable();
         if (properties != null) {
-            Enumeration keys = properties.keys();
-            while (keys.hasMoreElements()) {
-                String key = (String) keys.nextElement();
-                String symbolicName = key.split(":")[0];
+            Enumeration rules = properties.keys();
+            while (rules.hasMoreElements()) {
+                String rule = (String) rules.nextElement();
+                String symbolicName = rule.split(":")[0];
+                if (Constants.SERVICE_PID.equals(rule) || "felix.fileinstall.filename".equals(rule)) {
+                    continue;
+                }
                 LOGGER.debug("Check matching with {}", symbolicName);
                 Pattern pattern = Pattern.compile(symbolicName);
                 Matcher matcher = pattern.matcher(name);
                 if (matcher.matches()) {
-                    matchingRules.put(key, properties.get(key));
+                    LOGGER.debug("Rule {} matches with symbolic name {}", rule, name);
+                    matchingRules.put(rule, properties.get(rule));
                 }
             }
         }
-
-
         return matchingRules;
     }
 
