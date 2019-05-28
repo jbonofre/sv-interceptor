@@ -35,12 +35,13 @@ public class Activator implements BundleActivator {
     private void inject(Bus bus, String symbolicName, Dictionary properties) throws Exception {
         LOGGER.debug("Injecting LDAP interceptor ({})", symbolicName);
         InterceptorsUtil util = new InterceptorsUtil(properties);
-        if (util.symbolicNameDefined(symbolicName)) {
+        Dictionary matchingRules = util.getMatchingRules(symbolicName);
+        if (matchingRules.size() > 0) {
             LOGGER.debug("Symbolic name found");
 
             LOGGER.debug("Create LDAP interceptor");
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
-            svInterceptor.setProperties(properties);
+            svInterceptor.setProperties(matchingRules);
 
             LOGGER.debug("Injecting LDAP interceptor in bus {}", bus.getId());
             bus.getInInterceptors().add(svInterceptor);
@@ -157,9 +158,7 @@ public class Activator implements BundleActivator {
 
                     InterceptorsUtil util = new InterceptorsUtil(properties);
                     remove(bus);
-                    if (util.symbolicNameDefined(reference.getBundle().getSymbolicName())) {
-                        inject(bus, reference.getBundle().getSymbolicName(), properties);
-                    }
+                    inject(bus, reference.getBundle().getSymbolicName(), properties);
                 }
                 references = bundleContext.getServiceReferences(CamelContext.class.getName(), null);
                 for (ServiceReference reference : references) {
@@ -168,16 +167,12 @@ public class Activator implements BundleActivator {
                         if (endpoint instanceof CxfEndpoint) {
                             remove(((CxfEndpoint) endpoint).getBus());
                             InterceptorsUtil util = new InterceptorsUtil(properties);
-                            if (util.symbolicNameDefined(reference.getBundle().getSymbolicName())) {
-                                inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
-                            }
+                            inject(((CxfEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
                         }
                         if (endpoint instanceof CxfEndpoint) {
                             remove(((CxfRsEndpoint) endpoint).getBus());
                             InterceptorsUtil util = new InterceptorsUtil(properties);
-                            if (util.symbolicNameDefined(reference.getBundle().getSymbolicName())) {
-                                inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
-                            }
+                            inject(((CxfRsEndpoint) endpoint).getBus(), reference.getBundle().getSymbolicName(), properties);
                         }
                     }
                 }
