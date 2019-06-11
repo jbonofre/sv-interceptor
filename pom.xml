@@ -49,6 +49,11 @@
             <artifactId>osgi.cmpn</artifactId>
             <version>6.0.0</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.karaf.jaas</groupId>
+            <artifactId>org.apache.karaf.jaas.config</artifactId>
+            <version>4.1.7</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -68,6 +73,7 @@
                             org.springframework.http*;resolution:=optional,
                             org.springframework.web*;resolution:=optional,
                             org.apache.logging.log4j;resolution:=optional,
+                            org.apache.karaf.jaas.config;version="[4,5)",
                             *
                         </Import-Package>
                         <Bundle-Activator>com.sv.interceptor.Activator</Bundle-Activator>
