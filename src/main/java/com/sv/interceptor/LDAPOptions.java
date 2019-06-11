@@ -1,10 +1,15 @@
 package com.sv.interceptor;
 
+import org.apache.karaf.jaas.config.KeystoreManager;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.FrameworkUtil;
+import org.osgi.framework.ServiceReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.naming.Context;
 import javax.naming.NamingException;
+import javax.net.ssl.SSLSocketFactory;
 import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -136,6 +141,11 @@ public class LDAPOptions {
 
     public Hashtable<String, Object> getEnv() throws NamingException {
         final Hashtable<String, Object> env = new Hashtable<>();
+        for (String key : options.keySet()) {
+            if (key.startsWith(CONTEXT_PREFIX)) {
+                env.put(key.substring(CONTEXT_PREFIX.length()), options.get(key));
+            }
+        }
         env.put(Context.INITIAL_CONTEXT_FACTORY, getInitialContextFactory());
         env.put(Context.PROVIDER_URL, getConnectionURL());
         if (getConnectionUsername() != null && getConnectionUsername().trim().length() > 0) {
@@ -149,17 +159,14 @@ public class LDAPOptions {
         } else if (getAuthentication() != null) {
             env.put(Context.SECURITY_AUTHENTICATION, getAuthentication());
         }
-        /*
         if (getSsl()) {
             setupSsl(env);
         }
-         */
         return env;
     }
 
-    /*
     protected void setupSsl(Hashtable<String, Object> env) throws NamingException {
-        BundleContext bundleContext = FrameworkUtil.getBundle(LdapOptions.class).getBundleContext();
+        BundleContext bundleContext = FrameworkUtil.getBundle(LDAPOptions.class).getBundleContext();
         ServiceReference<KeystoreManager> ref = null;
         try {
             LOGGER.debug("Setting up SSL");
@@ -178,7 +185,6 @@ public class LDAPOptions {
             bundleContext.ungetService(ref);
         }
     }
-     */
 
     public Object getInitialContextFactory() {
         String initialContextFactory = (String) options.get(INITIAL_CONTEXT_FACTORY);
