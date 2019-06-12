@@ -17,12 +17,7 @@ import javax.naming.event.NamingEvent;
 import javax.naming.event.NamingExceptionEvent;
 import javax.naming.event.ObjectChangeListener;
 import java.io.Closeable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
@@ -53,17 +48,16 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
         return cache;
     }
 
-    private final Map<String, String[]> userDnAndNamespace;
-    private final Map<String, String[]> userRoles;
-    private final Map<String, String[]> userPubkeys;
+    private final Map<String, String[]> DnAndNamespaceMap;
+    // groupDN, [groupDN1, groupDN2, ...]
+    private final Map<String, List<String>> membersOfMap;
     private final LDAPOptions options;
     private DirContext context;
 
     public LDAPCache(LDAPOptions options) {
         this.options = options;
-        userDnAndNamespace = new HashMap<>();
-        userRoles = new HashMap<>();
-        userPubkeys = new HashMap<>();
+        DnAndNamespaceMap = new HashMap<>();
+        membersOfMap = new HashMap<>();
     }
 
     @Override
@@ -124,25 +118,125 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
         return context;
     }
 
-    public synchronized String[] getUserDnAndNamespace(String user) throws Exception {
-        String[] result = userDnAndNamespace.get(user);
-        if (result == null) {
-            result = doGetUserDnAndNamespace(user);
-            if (result != null && !options.getDisableCache()) {
-                userDnAndNamespace.put(user, result);
+    public synchronized String getFirstMatchingGroup(String user, String[] expectedRoles) throws Exception {
+        LOGGER.info("Check user {} with roles {}", user, expectedRoles);
+        List<String> userGroups = getMembersOf(user);
+
+        if (userGroups == null) {
+            String [] userDN = getUserDnAndNamespace(user);
+            if (userDN == null || userDN.length == 0) {
+                return null;
+            }
+            userGroups = getMembersOf(user);
+        }
+
+        if (userGroups.size() == 0) {
+            LOGGER.info("User {} has no group, abort", user);
+            return null;
+        }
+        return getFirstMatchingGroup(userGroups, expectedRoles, 0);
+    }
+
+    private String getFirstMatchingGroup(List <String> groupsDNs, String[] expectedGroups, int depth) throws Exception {
+        LOGGER.info("Check groups {} in depth {}", groupsDNs, depth);
+        if (depth > options.getMaxDepth()) {
+            LOGGER.info("Max depth reached, abort");
+            return null;
+        }
+
+        if (groupsDNs.size() == 0) {
+            LOGGER.info("No group to check here");
+            return null;
+        }
+
+        Iterator <String> iterator = groupsDNs.iterator();
+        while(iterator.hasNext()) {
+            String groupDN = iterator.next();
+            String groupName = getGroupName(groupDN);
+            LOGGER.debug("User is member of group {}", groupName);
+            if (Arrays.asList(expectedGroups).contains(groupName)) {
+                LOGGER.info("Group {} matches one expected group (depth={})", groupName, depth);
+                return groupName;
             }
         }
+        LOGGER.info("Depth {} has no matching group, go deeper", depth);
+
+        iterator = groupsDNs.iterator();
+
+        List <String> nextGroupsDNs = new ArrayList <String>();
+
+        while(iterator.hasNext()) {
+            String groupDN = iterator.next();
+            LOGGER.info("Check parents of group {}", groupDN);
+            nextGroupsDNs.addAll(getMembersOf(groupDN));
+        }
+        return getFirstMatchingGroup(nextGroupsDNs, expectedGroups, depth + 1);
+    }
+
+
+    public synchronized List<String> getMembersOf(String ou) throws Exception {
+        List<String> members = membersOfMap.get(ou);
+        if (members == null || members.size() == 0) {
+            LOGGER.debug("Group {} is not member of any group", ou);
+        } else {
+            LOGGER.debug("Group {} is member of groups {}", ou, members);
+        }
+        return members;
+    }
+
+    // cache User DN and membersOfMap
+    public synchronized String[] getUserDnAndNamespace(String user) throws Exception {
+        if (DnAndNamespaceMap.containsKey(user)) {
+            LOGGER.info("Get user {} from cache", user);
+            return DnAndNamespaceMap.get(user);
+        }
+
+        SearchResult response = doGetUserDnAndNamespace(user);
+
+        if (response == null) {
+            LOGGER.info("User {} not found in LDAP", user);
+            return null;
+        }
+        String userDNNamespace = response.getNameInNamespace();
+        // handle case where cn, ou, dc case doesn't match
+        int indexOfUserBaseDN = userDNNamespace.toLowerCase().indexOf("," + options.getUserBaseDn().toLowerCase());
+        String userDN = (indexOfUserBaseDN > 0) ? userDNNamespace.substring(0, indexOfUserBaseDN) : response.getName();
+
+        String[] result = new String[]{userDN, userDNNamespace};
+
+        if (!options.getDisableCache()) {
+            DnAndNamespaceMap.put(user, result);
+            Attributes attributes = response.getAttributes();
+            Attribute memberof = attributes.get("memberof");
+
+            List<String> groupList = new ArrayList<>();
+            for (int i = 0; i < memberof.size(); i++) {
+                String group = (String) memberof.get(i);
+
+                if (group != null) {
+                    LOGGER.debug("User {} is a member of group {}", user, group);
+                    groupList.add(group);
+                }
+            }
+
+            if (!options.getDisableCache()) {
+                membersOfMap.put(user, groupList);
+            }
+        }
+
         return result;
     }
 
-    protected String[] doGetUserDnAndNamespace(String user) throws NamingException {
+    // make the LDAP query
+    protected SearchResult doGetUserDnAndNamespace(String user) throws NamingException {
+        LOGGER.info("Get user {} from LDAP", user);
         DirContext context = open();
 
         SearchControls controls = new SearchControls();
         if (options.getUserSearchSubtree()) {
             controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
         } else {
-            controls.setSearchScope(SearchControls.ONELEVEL_SCOPE);
+            controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
         }
 
         String filter = options.getUserFilter();
@@ -160,24 +254,7 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
                 return null;
             }
             LOGGER.debug("Found the user DN.");
-            SearchResult result = namingEnumeration.next();
-
-            // We need to do the following because slashes are handled badly. For example, when searching
-            // for a user with lots of special characters like cn=admin,=+<>#;\
-            // SearchResult contains 2 different results:
-            //
-            // SearchResult.getName = cn=admin\,\=\+\<\>\#\;\\\\
-            // SearchResult.getNameInNamespace = cn=admin\,\=\+\<\>#\;\\,ou=people,dc=example,dc=com
-            //
-            // the second escapes the slashes correctly.
-            String userDNNamespace = result.getNameInNamespace();
-            // handle case where cn, ou, dc case doesn't match
-            int indexOfUserBaseDN = userDNNamespace.toLowerCase().indexOf("," + options.getUserBaseDn().toLowerCase());
-            String userDN = (indexOfUserBaseDN > 0) ?
-                    userDNNamespace.substring(0, indexOfUserBaseDN) :
-                    result.getName();
-
-            return new String[]{userDN, userDNNamespace};
+            return namingEnumeration.next();
         } finally {
             if (namingEnumeration != null) {
                 try {
@@ -189,47 +266,69 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
         }
     }
 
-    public synchronized String[] getUserRoles(String user, String userDn, String userDnNamespace) throws Exception {
-        String[] result = userRoles.get(userDn);
-        if (result == null) {
-            result = doGetUserRoles(user, userDn, userDnNamespace);
+    public synchronized String getGroupName(String groupDN) throws Exception {
+        if (DnAndNamespaceMap.containsKey(groupDN)) {
+            LOGGER.debug("Get name of group {} from cache", groupDN);
+            return DnAndNamespaceMap.get(groupDN)[0];
+        }
+
+        NamingEnumeration<SearchResult> namingEnumeration = doGetGroupName(groupDN);
+        try {
+            if (!namingEnumeration.hasMore()) {
+                LOGGER.warn("Group " + groupDN + " not found in LDAP.");
+                return null;
+            }
+
+            LOGGER.debug("Group DN {} found in LDAP.", groupDN);
+            SearchResult result = namingEnumeration.next();
+
+            List<String> membersList = new ArrayList<>();
+            Attributes attributes = result.getAttributes();
+
+            Attribute names = attributes.get("name");
+            String name = null;
+            if (names != null && names.size() > 0) {
+                name = (String) names.get(0);
+                LOGGER.debug("Group DN {} has {} as name.", groupDN, name);
+                if (!options.getDisableCache()) {
+                    DnAndNamespaceMap.put(groupDN, new String[] { name });
+                }
+            } else {
+                LOGGER.debug("Group DN {} has no name, abort.", groupDN);
+                return null;
+            }
+
+            Attribute members = attributes.get("memberOf");
+            if (members != null) {
+                for (int i = 0; i < members.size(); i++) {
+                    String member = (String) members.get(i);
+                    if (member != null) {
+                        LOGGER.debug("{} is a member of group {}", member, groupDN);
+                        membersList.add(member);
+                    }
+                }
+            }
+
             if (!options.getDisableCache()) {
-                userRoles.put(userDn, result);
+                membersOfMap.put(groupDN, membersList);
+            }
+
+            return name;
+        } finally {
+            if (namingEnumeration != null) {
+                try {
+                    namingEnumeration.close();
+                } catch (NamingException e) {
+                    // Ignore
+                }
             }
         }
-        return result;
+
     }
 
-    public synchronized String[] getUserPubkeys(String userDn) throws NamingException {
-        String[] result = userPubkeys.get(userDn);
-        if (result == null) {
-            result = doGetUserPubkeys(userDn);
-            if (!options.getDisableCache()) {
-                userPubkeys.put(userDn, result);
-            }
-        }
-        return result;
-    }
-
-
-    protected Set<String> tryMappingRole(String role) {
-        Set<String> roles = new HashSet<>();
-        if (options.getRoleMapping().isEmpty()) {
-            return roles;
-        }
-        Set<String> karafRoles = options.getRoleMapping().get(role);
-        if (karafRoles != null) {
-            // add all mapped roles
-            for (String karafRole : karafRoles) {
-                LOGGER.debug("LDAP role {} is mapped to Karaf role {}", role, karafRole);
-                roles.add(karafRole);
-            }
-        }
-        return roles;
-    }
-
-
-    private String[] doGetUserRoles(String user, String userDn, String userDnNamespace) throws NamingException {
+    // make the LDAP query
+    private NamingEnumeration<SearchResult> doGetGroupName(String member) throws NamingException {
+        LOGGER.info("Get group {} from LDAP", member);
         DirContext context = open();
 
         SearchControls controls = new SearchControls();
@@ -241,83 +340,19 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
 
         String filter = options.getRoleFilter();
         if (filter != null) {
-            filter = filter.replaceAll(Pattern.quote("%u"), Matcher.quoteReplacement(user));
-            filter = filter.replaceAll(Pattern.quote("%dn"), Matcher.quoteReplacement(userDn));
-            filter = filter.replaceAll(Pattern.quote("%fqdn"), Matcher.quoteReplacement(userDnNamespace));
+            filter = filter.replaceAll(Pattern.quote("%grp"), Matcher.quoteReplacement(member));
             filter = filter.replace("\\", "\\\\");
 
-            LOGGER.debug("Looking for the user roles in LDAP with ");
+            LOGGER.debug("Looking for the groups in LDAP with ");
             LOGGER.debug("  base DN: " + options.getRoleBaseDn());
             LOGGER.debug("  filter: " + filter);
 
-            NamingEnumeration<SearchResult> namingEnumeration = context.search(options.getRoleBaseDn(), filter, controls);
-            try {
-                List<String> rolesList = new ArrayList<>();
-                while (namingEnumeration.hasMore()) {
-                    SearchResult result = namingEnumeration.next();
-                    Attributes attributes = result.getAttributes();
-                    Attribute roles1 = attributes.get(options.getRoleNameAttribute());
-                    if (roles1 != null) {
-                        for (int i = 0; i < roles1.size(); i++) {
-                            String role = (String) roles1.get(i);
-                            if (role != null) {
-                                LOGGER.debug("User {} is a member of role {}", user, role);
-                                // handle role mapping
-                                Set<String> roleMappings = tryMappingRole(role);
-                                if (roleMappings.isEmpty()) {
-                                    rolesList.add(role);
-                                } else {
-                                    for (String roleMapped : roleMappings) {
-                                        rolesList.add(roleMapped);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                }
-                return rolesList.toArray(new String[rolesList.size()]);
-            } finally {
-                if (namingEnumeration != null) {
-                    try {
-                        namingEnumeration.close();
-                    } catch (NamingException e) {
-                        // Ignore
-                    }
-                }
-            }
+            return context.search(options.getRoleBaseDn(), filter, controls);
         } else {
-            LOGGER.debug("The user role filter is null so no roles are retrieved");
-            return new String[] {};
+            LOGGER.debug("The member filter is null so no groups are retrieved");
+            return null;
         }
     }
-
-    private String[] doGetUserPubkeys(String userDn) throws NamingException {
-        DirContext context = open();
-
-        String userPubkeyAttribute = options.getUserPubkeyAttribute();
-        if (userPubkeyAttribute != null) {
-            LOGGER.debug("Looking for public keys of user {} in attribute {}", userDn, userPubkeyAttribute);
-
-            Attributes attributes = context.getAttributes(userDn, new String[]{userPubkeyAttribute});
-            Attribute pubkeyAttribute = attributes.get(userPubkeyAttribute);
-
-            List<String> pubkeyList = new ArrayList<>();
-            if (pubkeyAttribute != null) {
-                for (int i = 0; i < pubkeyAttribute.size(); i++) {
-                    String pk = (String) pubkeyAttribute.get(i);
-                    if (pk != null) {
-                        pubkeyList.add(pk);
-                    }
-                }
-            }
-            return pubkeyList.toArray(new String[pubkeyList.size()]);
-        } else {
-            LOGGER.debug("The user public key attribute is null so no keys were retrieved");
-            return new String[] {};
-        }
-    }
-
 
     @Override
     public void objectAdded(NamingEvent evt) {
@@ -345,8 +380,8 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
     }
 
     protected synchronized void clearCache() {
-        userDnAndNamespace.clear();
-        userRoles.clear();
-        userPubkeys.clear();
+        LOGGER.info("Cache cleared.");
+        DnAndNamespaceMap.clear();
+        membersOfMap.clear();
     }
 }

@@ -1,12 +1,10 @@
 package com.sv.interceptor;
 
 import org.apache.camel.CamelContext;
-import org.apache.camel.Endpoint;
+
 import org.apache.camel.Route;
 import org.apache.camel.component.cxf.CxfConsumer;
-import org.apache.camel.component.cxf.CxfEndpoint;
 import org.apache.camel.component.cxf.jaxrs.CxfRsConsumer;
-import org.apache.camel.component.cxf.jaxrs.CxfRsEndpoint;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.cxf.Bus;
 import org.apache.cxf.endpoint.Server;
@@ -125,7 +123,6 @@ public class Activator implements BundleActivator {
         //LDAP configuration seems OK
 
         managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
-
         LOGGER.debug("Starting CXF buses cxfBusesTracker");
         cxfBusesTracker = new ServiceTracker<Bus, ServiceRegistration>(bundleContext, Bus.class, null) {
 
@@ -206,30 +203,34 @@ public class Activator implements BundleActivator {
             try {
 
                 ServiceReference[] references = bundleContext.getServiceReferences(Bus.class.getName(), null);
-                for (ServiceReference reference : references) {
-                    Bus bus = (Bus) bundleContext.getService(reference);
-                    remove(bus);
-                    inject(bus, reference.getBundle().getSymbolicName());
+                if (references != null) {
+                    for (ServiceReference reference : references) {
+                        Bus bus = (Bus) bundleContext.getService(reference);
+                        remove(bus);
+                        inject(bus, reference.getBundle().getSymbolicName());
+                    }
                 }
                 references = bundleContext.getServiceReferences(CamelContext.class.getName(), null);
-                for (ServiceReference reference : references) {
-                    CamelContext camelContext = (CamelContext) bundleContext.getService(reference);
-                    for (Route route : camelContext.getRoutes()) {
-                        if (route.getConsumer() instanceof CxfRsConsumer) {
-                            Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
-                            try {
-                                remove(server.getEndpoint());
-                                inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
-                            } catch (Exception e) {
-                                LOGGER.error("Can't inject sv interceptor on CxfRsConsumer", e);
-                            }
-                        } else if (route.getConsumer() instanceof CxfConsumer) {
-                            Server server = ((CxfConsumer) route.getConsumer()).getServer();
-                            try {
-                                remove(server.getEndpoint());
-                                inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
-                            } catch (Exception e) {
-                                LOGGER.error("Can't inject sv interceptor on CxfConsumer", e);
+                if (references != null) {
+                    for (ServiceReference reference : references) {
+                        CamelContext camelContext = (CamelContext) bundleContext.getService(reference);
+                        for (Route route : camelContext.getRoutes()) {
+                            if (route.getConsumer() instanceof CxfRsConsumer) {
+                                Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
+                                try {
+                                    remove(server.getEndpoint());
+                                    inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
+                                } catch (Exception e) {
+                                    LOGGER.error("Can't inject sv interceptor on CxfRsConsumer", e);
+                                }
+                            } else if (route.getConsumer() instanceof CxfConsumer) {
+                                Server server = ((CxfConsumer) route.getConsumer()).getServer();
+                                try {
+                                    remove(server.getEndpoint());
+                                    inject(server.getEndpoint(), reference.getBundle().getSymbolicName());
+                                } catch (Exception e) {
+                                    LOGGER.error("Can't inject sv interceptor on CxfConsumer", e);
+                                }
                             }
                         }
                     }
