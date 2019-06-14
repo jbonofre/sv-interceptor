@@ -7,6 +7,7 @@ import org.apache.camel.component.cxf.CxfConsumer;
 import org.apache.camel.component.cxf.jaxrs.CxfRsConsumer;
 import org.apache.camel.impl.DefaultCamelContext;
 import org.apache.cxf.Bus;
+import org.apache.cxf.annotations.EndpointProperties;
 import org.apache.cxf.endpoint.Server;
 import org.apache.cxf.interceptor.Interceptor;
 import org.osgi.framework.*;
@@ -17,6 +18,8 @@ import org.osgi.service.cm.ManagedService;
 import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import routines.system.api.ESBEndpointInfo;
+import routines.system.api.TalendESBJob;
 
 import java.io.IOException;
 import java.util.Dictionary;
@@ -40,7 +43,7 @@ public class Activator implements BundleActivator {
         InterceptorsUtil util = new InterceptorsUtil(properties);
         Dictionary matchingRules = util.getMatchingRules(symbolicName);
         if (matchingRules.size() > 0) {
-            LOGGER.debug("Matching rules found for bus {}, start LDAPInterceptor injection", symbolicName);
+            LOGGER.info("Matching rules found for bus {}, start LDAPInterceptor injection", symbolicName);
             LOGGER.debug("Creating LDAP interceptor for bus {}", symbolicName);
             LDAPInterceptor svInterceptor = new LDAPInterceptor();
             svInterceptor.setRules(matchingRules);
@@ -75,7 +78,7 @@ public class Activator implements BundleActivator {
     private void remove(Bus bus) {
         for (Interceptor interceptor : bus.getInInterceptors()) {
             if (interceptor instanceof LDAPInterceptor) {
-                LOGGER.debug("Removing old sv interceptor from bus");
+                LOGGER.debug("Removing old sv interceptor from bus {}", bus.getId());
                 bus.getInInterceptors().remove(interceptor);
             }
         }
@@ -91,6 +94,7 @@ public class Activator implements BundleActivator {
     }
 
     public void start(final BundleContext bundleContext) throws Exception {
+        LOGGER.debug("Bundle start");
         Dictionary<String, String> properties = new Hashtable<>();
         properties.put(Constants.SERVICE_PID, CONFIG_PID);
 
@@ -113,26 +117,26 @@ public class Activator implements BundleActivator {
             LDAPCache cache = LDAPCache.getCache(options);
             cache.open();
             cache.close();
+            LOGGER.error("Successfully connect to LDAP server");
         } catch(Exception ex) {
             LOGGER.error(ex.getMessage());
             LOGGER.error("Cannot connect to LDAP server;");
-            LOGGER.error("Check LDAP configuration file (default location : etc/{}.cfg) or connection to the LDAP server", CONFIG_AUTH_PID);
+            LOGGER.error("HINT : Check LDAP configuration file (default location : etc/{}.cfg) and LDAP server accessibility", CONFIG_AUTH_PID);
         }
         //LDAP configuration seems OK
 
         managedServiceRegistration = bundleContext.registerService(ManagedService.class.getName(), new ConfigUpdater(bundleContext), properties);
+
         LOGGER.debug("Starting CXF buses cxfBusesTracker");
         cxfBusesTracker = new ServiceTracker<Bus, ServiceRegistration>(bundleContext, Bus.class, null) {
-
             public ServiceRegistration<?> addingService(ServiceReference<Bus> reference) {
                 Bus bus = bundleContext.getService(reference);
-                LOGGER.debug("Look at bus {}", bus.getId());
+                LOGGER.debug("New bus service added, check it ({})", bus.getId());
                 try {
                     inject(bus, reference.getBundle().getSymbolicName());
                 } catch (Exception e) {
                     LOGGER.error("Can't inject sv interceptor", e);
                 }
-
                 return null;
             }
 
@@ -140,14 +144,13 @@ public class Activator implements BundleActivator {
                 reg.unregister();
                 super.removedService(reference, reg);
             }
-
-
         };
         cxfBusesTracker.open();
         LOGGER.debug("Starting CamelContexts tracker");
         camelContextsTracker = new ServiceTracker<CamelContext, ServiceRegistration>(bundleContext, CamelContext.class, null) {
             public ServiceRegistration<?> addingService(ServiceReference<CamelContext> reference) {
                 DefaultCamelContext camelContext = (DefaultCamelContext) bundleContext.getService(reference);
+                LOGGER.debug("New camel service added, check its endpoints");
                 for (Route route : camelContext.getRoutes()) {
                     if (route.getConsumer() instanceof CxfRsConsumer) {
                         Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
@@ -178,17 +181,54 @@ public class Activator implements BundleActivator {
         camelContextsTracker.open();
     }
 
+    private void cleanInterceptors(BundleContext bundleContext) throws Exception{
+        LOGGER.info("Cleaning LDAPInterceptor from services");
+        ServiceReference[] references = bundleContext.getServiceReferences(Bus.class.getName(), null);
+        if (references != null) {
+            for (ServiceReference reference : references) {
+                Bus bus = (Bus) bundleContext.getService(reference);
+                remove(bus);
+            }
+        }
+        references = bundleContext.getServiceReferences(CamelContext.class.getName(), null);
+        if (references != null) {
+            for (ServiceReference reference : references) {
+                CamelContext camelContext = (CamelContext) bundleContext.getService(reference);
+                for (Route route : camelContext.getRoutes()) {
+                    if (route.getConsumer() instanceof CxfRsConsumer) {
+                        Server server = ((CxfRsConsumer) route.getConsumer()).getServer();
+                        try {
+                            remove(server.getEndpoint());
+                        } catch (Exception e) {
+                            LOGGER.error("Can't inject sv interceptor on CxfRsConsumer", e);
+                        }
+                    } else if (route.getConsumer() instanceof CxfConsumer) {
+                        Server server = ((CxfConsumer) route.getConsumer()).getServer();
+                        try {
+                            remove(server.getEndpoint());
+                        } catch (Exception e) {
+                            LOGGER.error("Can't inject sv interceptor on CxfConsumer", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public void stop(BundleContext bundleContext) throws Exception {
+        LOGGER.info("Stopping LDAPInterceptor tracker");
         if (cxfBusesTracker != null)
             cxfBusesTracker.close();
         if (camelContextsTracker != null)
             camelContextsTracker.close();
         if (managedServiceRegistration != null)
             managedServiceRegistration.unregister();
+
+        cleanInterceptors(bundleContext);
+        LOGGER.info("LDAPInterceptor tracker stopped");
     }
 
     private final class ConfigUpdater implements ManagedService {
-
         private BundleContext bundleContext;
 
         public ConfigUpdater(BundleContext bundleContext) {
@@ -199,7 +239,6 @@ public class Activator implements BundleActivator {
             properties = config;
             LOGGER.debug("Configuration updated");
             try {
-
                 ServiceReference[] references = bundleContext.getServiceReferences(Bus.class.getName(), null);
                 if (references != null) {
                     for (ServiceReference reference : references) {
