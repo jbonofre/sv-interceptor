@@ -112,22 +112,31 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                     operations = parts[2];
                 }
 
-                if (!"".equals(verbs)) {
+                if (!"".equals(verbs.trim())) {
                     String verb = (String)message.get("org.apache.cxf.request.method");
                     if (verbs.toLowerCase().indexOf(verb.toLowerCase()) == -1) {
                         LOGGER.debug("Verb {} does not match any verbs {}, continue", verb, verbs);
                         continue;
                     }
                     LOGGER.debug("Verb {} matches with verbs range ({})", verb, verbs);
+                } else {
+                    LOGGER.debug("Skip verb check");
                 }
 
-                if (operations != null) {
-                    String operation = (String)message.get("org.apache.cxf.request.method");
+                if (operations != null && !"".equals(operations.trim()) && message.containsKey("org.apache.cxf.binding.soap.SoapVersion")) {
+                    TreeMap headers= (TreeMap)message.get("org.apache.cxf.message.Message.PROTOCOL_HEADERS");
+                    ArrayList actions = (ArrayList)headers.get("SOAPAction");
+                    if (actions.size() == 0) {
+                        LOGGER.warn("Message should have a SOAPAction but is not found, throw exception");
+                    }
+                    String operation = ((String)actions.get(0)).replaceAll("\"", "");
                     if (operations.toLowerCase().indexOf(operation.toLowerCase()) == -1) {
                         LOGGER.debug("Operation {} does not match any operations {}, continue", operation, operations);
                         continue;
                     }
                     LOGGER.debug("Operation {} matches with operations range ({})", operation, operations);
+                } else {
+                    LOGGER.debug("Skip operation check");
                 }
                 return (String)rules.get(key);
             }
