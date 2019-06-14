@@ -116,9 +116,7 @@ public class Activator implements BundleActivator {
         } catch(Exception ex) {
             LOGGER.error(ex.getMessage());
             LOGGER.error("Cannot connect to LDAP server;");
-            LOGGER.error("Check LDAP configuration file (default location : etc/{}.cfg)", CONFIG_AUTH_PID);
-            blockEverything(bundleContext);
-            return;
+            LOGGER.error("Check LDAP configuration file (default location : etc/{}.cfg) or connection to the LDAP server", CONFIG_AUTH_PID);
         }
         //LDAP configuration seems OK
 

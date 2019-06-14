@@ -114,20 +114,22 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
 
                 if (!"".equals(verbs)) {
                     String verb = (String)message.get("org.apache.cxf.request.method");
-                    if (verbs.indexOf(verb) == -1) {
+                    if (verbs.toLowerCase().indexOf(verb.toLowerCase()) == -1) {
                         LOGGER.debug("Verb {} does not match any verbs {}, continue", verb, verbs);
                         continue;
                     }
+                    LOGGER.debug("Verb {} matches with verbs range ({})", verb, verbs);
                 }
 
                 if (operations != null) {
                     String operation = (String)message.get("org.apache.cxf.request.method");
-                    if (operations.indexOf(operation) == -1) {
+                    if (operations.toLowerCase().indexOf(operation.toLowerCase()) == -1) {
                         LOGGER.debug("Operation {} does not match any operations {}, continue", operation, operations);
                         continue;
                     }
-
+                    LOGGER.debug("Operation {} matches with operations range ({})", operation, operations);
                 }
+                return (String)rules.get(key);
             }
         }
         return null;
