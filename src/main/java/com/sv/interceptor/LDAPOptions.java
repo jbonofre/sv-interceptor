@@ -35,6 +35,8 @@ public class LDAPOptions {
     public static final String AUTHENTICATION = "authentication";
     public static final String ALLOW_EMPTY_PASSWORDS = "allowEmptyPasswords";
     public static final String DISABLE_CACHE = "disableCache";
+    public static final String MAX_DEPTH= "ldap.maxDepth";
+    public static final int DEFAULT_MAX_DEPTH= 2;
     public static final String INITIAL_CONTEXT_FACTORY = "initial.context.factory";
     public static final String CONTEXT_PREFIX = "context.";
     public static final String SSL = "ssl";
@@ -262,13 +264,24 @@ public class LDAPOptions {
         }
     }
 
+    public int getMaxDepth() {
+        Object val = options.get(MAX_DEPTH);
+        if (val instanceof Number) {
+            return ((Number) val).intValue();
+        } else if (val != null) {
+            return Integer.parseInt(val.toString());
+        } else {
+            return DEFAULT_MAX_DEPTH;
+        }
+    }
+
     public boolean getAllowEmptyPasswords() {
         return Boolean.parseBoolean((String) options.get(ALLOW_EMPTY_PASSWORDS));
     }
 
     public boolean getDisableCache() {
         final Object object = options.get(DISABLE_CACHE);
-        return object == null || Boolean.parseBoolean((String) object);
+        return object != null && Boolean.parseBoolean((String) object);
     }
 
 }
