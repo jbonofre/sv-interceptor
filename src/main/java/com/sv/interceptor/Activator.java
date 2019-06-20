@@ -114,7 +114,7 @@ public class Activator implements BundleActivator {
             LDAPCache cache = LDAPCache.getCache(options);
             cache.open();
             cache.close();
-            LOGGER.error("Successfully connect to LDAP server");
+            LOGGER.info("Successfully connect to LDAP server");
         } catch(Exception ex) {
             LOGGER.error(ex.getMessage());
             LOGGER.error("Cannot connect to LDAP server;");
