@@ -60,7 +60,6 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
     }
 
     public void sendErrorResponse(Message message, int errorCode) {
-
         // no authentication provided, send error response
         Exchange exchange = message.getExchange();
         Message outMessage = exchange.getOutMessage();
@@ -79,7 +78,6 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
         message.getInterceptorChain().abort();
 
         try {
-            EndpointReferenceType target = exchange.get(EndpointReferenceType.class);
             if (exchange.getDestination() == null) {
                 LOGGER.debug("Exchange destination is null");
                 return;
@@ -95,11 +93,22 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
         }
     }
 
+    class Sortbylength implements Comparator<String>
+    {
+        // Used for sorting in ascending order of
+        // roll number
+        public int compare(String a, String b)
+        {
+            return b.length() - a.length();
+        }
+    }
+
     private String getFirstMatchingRule(Message message) {
         if (rules != null) {
             Enumeration keys = rules.keys();
-            while (keys.hasMoreElements()) {
-                String key = (String) keys.nextElement();
+            List<String> list = Collections.list(keys);
+            Collections.sort(list, new Sortbylength());
+            for (String key: list) {
                 String [] parts = key.split(":");
                 if (parts.length == 1) {
                     LOGGER.debug("Rule {} found with no condition", key);
@@ -112,22 +121,33 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                     operations = parts[2];
                 }
 
-                if (!"".equals(verbs)) {
+                if (!"".equals(verbs.trim())) {
                     String verb = (String)message.get("org.apache.cxf.request.method");
-                    if (verbs.indexOf(verb) == -1) {
+                    if (verbs.toLowerCase().indexOf(verb.toLowerCase()) == -1) {
                         LOGGER.debug("Verb {} does not match any verbs {}, continue", verb, verbs);
                         continue;
                     }
+                    LOGGER.debug("Verb {} matches with verbs range ({})", verb, verbs);
+                } else {
+                    LOGGER.debug("Skip verb check");
                 }
 
-                if (operations != null) {
-                    String operation = (String)message.get("org.apache.cxf.request.method");
-                    if (operations.indexOf(operation) == -1) {
+                if (operations != null && !"".equals(operations.trim()) && message.containsKey("org.apache.cxf.binding.soap.SoapVersion")) {
+                    TreeMap headers= (TreeMap)message.get("org.apache.cxf.message.Message.PROTOCOL_HEADERS");
+                    ArrayList actions = (ArrayList)headers.get("SOAPAction");
+                    if (actions.size() == 0) {
+                        LOGGER.warn("Message should have a SOAPAction but is not found, throw exception");
+                    }
+                    String operation = ((String)actions.get(0)).replaceAll("\"", "");
+                    if (operations.toLowerCase().indexOf(operation.toLowerCase()) == -1) {
                         LOGGER.debug("Operation {} does not match any operations {}, continue", operation, operations);
                         continue;
                     }
-
+                    LOGGER.debug("Operation {} matches with operations range ({})", operation, operations);
+                } else {
+                    LOGGER.debug("Skip operation check");
                 }
+                return (String)rules.get(key);
             }
         }
         return null;
@@ -135,6 +155,7 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
 
 
     public void handleMessage(Message message) throws Fault {
+        LOGGER.info("Start handling message");
         AuthorizationPolicy policy = message.get(AuthorizationPolicy.class);
 
         String expectedGroups = getFirstMatchingRule(message);
@@ -185,6 +206,10 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                 if (userDnAndNamespace == null) {
                     throw new SecurityException("Can't authenticate user");
                 }
+            } catch (javax.naming.AuthenticationException e) {
+                LOGGER.warn("Can't authenticate user to the LDAP server: {}, send HttpURLConnection.HTTP_UNAUTHORIZED", e.getMessage(), e);
+                sendErrorResponse(message, HttpURLConnection.HTTP_UNAUTHORIZED);
+                return;
             } catch (Exception e) {
                 LOGGER.warn("Can't connect to the LDAP server: {}", e.getMessage(), e);
                 throw new Fault(e);
@@ -203,7 +228,7 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                 LOGGER.debug("User " + user + " successfully bound.");
                 context.close();
             } catch (Exception e) {
-                LOGGER.warn("User " + user + " authentication failed.", e);
+                LOGGER.warn("User " + user + " authentication failed, send HttpURLConnection.HTTP_UNAUTHORIZED.", e);
                 sendErrorResponse(message, HttpURLConnection.HTTP_UNAUTHORIZED);
                 return;
             } finally {
