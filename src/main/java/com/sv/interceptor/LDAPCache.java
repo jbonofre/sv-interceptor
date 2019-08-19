@@ -114,7 +114,6 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
                 eventContext.addNamingListener(options.getRoleBaseDn(), filter, constraints, this);
             }
         }
-
         return context;
     }
 
@@ -172,7 +171,6 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
         }
         return getFirstMatchingGroup(nextGroupsDNs, expectedGroups, depth + 1);
     }
-
 
     public synchronized List<String> getMembersOf(String ou) throws Exception {
         List<String> members = membersOfMap.get(ou);

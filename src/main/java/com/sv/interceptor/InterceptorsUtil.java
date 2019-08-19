@@ -62,11 +62,18 @@ public class InterceptorsUtil {
                 if (Constants.SERVICE_PID.equals(rule) || "felix.fileinstall.filename".equals(rule)) {
                     continue;
                 }
-                LOGGER.debug("Check matching with {}", symbolicName);
+                LOGGER.debug("Check if {} matches with {}", name, symbolicName);
+
+                String value = (String)properties.get(rule);
+                if (value == null || "".equals(value)) {
+                    LOGGER.warn("Rule {} will be ignored because no value provided.", rule, value);
+                    continue;
+                }
+
                 Pattern pattern = Pattern.compile(symbolicName);
                 Matcher matcher = pattern.matcher(name);
                 if (matcher.matches()) {
-                    LOGGER.debug("Rule {} matches with symbolic name {}", rule, name);
+                    LOGGER.info("Rule {} matches with symbolic name {}", rule, name);
                     matchingRules.put(rule, properties.get(rule));
                 }
             }

@@ -14,10 +14,13 @@ import org.osgi.service.cm.Configuration;
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
+import org.osgi.service.component.ComponentException;
 import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.naming.NamingException;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Dictionary;
 import java.util.Hashtable;
@@ -99,26 +102,31 @@ public class Activator implements BundleActivator {
         ServiceReference configAdminServiceRef = bundleContext.getServiceReference(ConfigurationAdmin.class.getName());
         ConfigurationAdmin configAdminService = (ConfigurationAdmin) bundleContext.getService( configAdminServiceRef );
 
-        Configuration configuration;
         try {
-            configuration = configAdminService.getConfiguration(CONFIG_AUTH_PID);
-        } catch(IOException e) {
-            LOGGER.error("Cannot read LDAP configuration file (check {}.cfg)", CONFIG_AUTH_PID);
-            blockEverything(bundleContext);
-            return;
-        }
-
-        try {
+            Configuration configuration = configAdminService.getConfiguration(CONFIG_AUTH_PID);
+            if (configuration.getProperties() == null) {
+                throw new FileNotFoundException(CONFIG_AUTH_PID);
+            }
             LDAPProperties = configuration.getProperties();
             LDAPOptions options = new LDAPOptions(LDAPProperties);
             LDAPCache cache = LDAPCache.getCache(options);
             cache.open();
             cache.close();
             LOGGER.info("Successfully connect to LDAP server");
-        } catch(Exception ex) {
-            LOGGER.error(ex.getMessage());
-            LOGGER.error("Cannot connect to LDAP server;");
-            LOGGER.error("HINT : Check LDAP configuration file (default location : etc/{}.cfg) and LDAP server accessibility", CONFIG_AUTH_PID);
+        } catch(IOException e) {
+            LOGGER.error("FATAL : Cannot read LDAP configuration file (check {}.cfg)", CONFIG_AUTH_PID);
+            LOGGER.error("FATAL: Interceptor will block everything, need bundle restart.");
+        } catch (javax.naming.AuthenticationException ex) {
+            LOGGER.error("FATAL : " + ex.toString());
+            LOGGER.error("FATAL : Credentials seems to be wrong (check {}.cfg)", CONFIG_AUTH_PID);
+            LOGGER.error("FATAL: Interceptor will block everything, need bundle restart.");
+        } catch(javax.naming.ConfigurationException ex) {
+            LOGGER.error("FATAL : " + ex.toString() + " (check {}.cfg)", CONFIG_AUTH_PID);
+            LOGGER.error("FATAL: Interceptor will block everything, need bundle restart.");
+        } catch(NamingException ex) {
+            LOGGER.warn(ex.toString());
+            LOGGER.warn("Cannot connect to LDAP server;");
+            LOGGER.warn("HINT : Check LDAP configuration file (default location : etc/{}.cfg) and LDAP server accessibility", CONFIG_AUTH_PID);
         }
         //LDAP configuration seems OK
 
@@ -274,11 +282,4 @@ public class Activator implements BundleActivator {
             }
         }
     }
-
-    public void blockEverything(BundleContext bundleContext) throws Exception {
-        // TODO : implementation
-        // New services should be blockec too
-        LOGGER.warn("Block everything !!!");
-    }
-
 }

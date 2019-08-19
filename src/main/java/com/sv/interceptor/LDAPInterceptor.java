@@ -121,15 +121,15 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                     operations = parts[2];
                 }
 
+                String verb = (String)message.get("org.apache.cxf.request.method");
                 if (!"".equals(verbs.trim())) {
-                    String verb = (String)message.get("org.apache.cxf.request.method");
                     if (verbs.toLowerCase().indexOf(verb.toLowerCase()) == -1) {
                         LOGGER.debug("Verb {} does not match any verbs {}, continue", verb, verbs);
                         continue;
                     }
                     LOGGER.debug("Verb {} matches with verbs range ({})", verb, verbs);
                 } else {
-                    LOGGER.debug("Skip verb check");
+                    LOGGER.debug("Skip verb check, ({})", verb);
                 }
 
                 if (operations != null && !"".equals(operations.trim()) && message.containsKey("org.apache.cxf.binding.soap.SoapVersion")) {
@@ -138,8 +138,12 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                     if (actions.size() == 0) {
                         LOGGER.warn("Message should have a SOAPAction but is not found, throw exception");
                     }
+
                     String operation = ((String)actions.get(0)).replaceAll("\"", "");
-                    if (operations.toLowerCase().indexOf(operation.toLowerCase()) == -1) {
+
+                    Pattern pattern = Pattern.compile(operations);
+                    Matcher matcher = pattern.matcher(operation);
+                    if (!matcher.matches()) {
                         LOGGER.debug("Operation {} does not match any operations {}, continue", operation, operations);
                         continue;
                     }
@@ -155,17 +159,17 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
 
 
     public void handleMessage(Message message) throws Fault {
-        LOGGER.info("Start handling message");
+        LOGGER.info("Handling new message");
         AuthorizationPolicy policy = message.get(AuthorizationPolicy.class);
 
         String expectedGroups = getFirstMatchingRule(message);
-        LOGGER.info("Check with groups {}", expectedGroups );
 
         if (expectedGroups == null) {
-            LOGGER.info("Message match no rule, pass");
+            LOGGER.info("Message matches no rule, continue.");
             return;
         }
 
+        LOGGER.info("Expected groups user : {}", expectedGroups );
         if (policy == null || policy.getUserName() == null || policy.getPassword() == null) {
             // no authentication provided, send error response
             LOGGER.info("No authorization policy, send HttpURLConnection.HTTP_UNAUTHORIZED");
@@ -196,7 +200,14 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
             //       LDAP auth(token.getName(), token.getPassword());
             String user = token.getName();
             String password = token.getPassword();
-            LDAPOptions ldapOptions = new LDAPOptions(options);
+            LDAPOptions ldapOptions;
+            try {
+                ldapOptions = new LDAPOptions(options);
+            } catch (java.lang.NullPointerException ex) {
+                LOGGER.error("FATAL : Cannot read LDAP configuration file, send HttpURLConnection.HTTP_INTERNAL_ERROR");
+                sendErrorResponse(message, HttpURLConnection.HTTP_INTERNAL_ERROR);
+                return;
+            }
             LDAPCache cache = LDAPCache.getCache(ldapOptions);
             // step 1.1, get DN
             final String[] userDnAndNamespace;
@@ -204,15 +215,20 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                 LOGGER.debug("Get the user DN.");
                 userDnAndNamespace = cache.getUserDnAndNamespace(user);
                 if (userDnAndNamespace == null) {
-                    throw new SecurityException("Can't authenticate user");
+                    LOGGER.warn("Can't authenticate user to the LDAP server, send HttpURLConnection.HTTP_UNAUTHORIZED");
+                    sendErrorResponse(message, HttpURLConnection.HTTP_UNAUTHORIZED);
+                    return;
                 }
             } catch (javax.naming.AuthenticationException e) {
-                LOGGER.warn("Can't authenticate user to the LDAP server: {}, send HttpURLConnection.HTTP_UNAUTHORIZED", e.getMessage(), e);
-                sendErrorResponse(message, HttpURLConnection.HTTP_UNAUTHORIZED);
+                LOGGER.error("FATAL : " + e.toString());
+                LOGGER.error("FATAL : Credentials seems to be wrong, send HttpURLConnection.HTTP_INTERNAL_ERROR");
+                sendErrorResponse(message, HttpURLConnection.HTTP_INTERNAL_ERROR);
                 return;
             } catch (Exception e) {
-                LOGGER.warn("Can't connect to the LDAP server: {}", e.getMessage(), e);
-                throw new Fault(e);
+                LOGGER.warn(e.toString());
+                LOGGER.warn("Can't connect to the LDAP server: {}, send HttpURLConnection.HTTP_INTERNAL_ERROR", e.getMessage());
+                sendErrorResponse(message, HttpURLConnection.HTTP_INTERNAL_ERROR);
+                return;
             }
             // step 1.2, bind the user using DN
             DirContext context = null;
@@ -243,11 +259,11 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
             // here user is authenticated
             String group = cache.getFirstMatchingGroup(user, Arrays.stream(expectedGroups.split(",")).map(String::trim).toArray(String[]::new));
             if(group == null) {
-                LOGGER.info("No group found, send HttpURLConnection.HTTP_FORBIDDEN");
+                LOGGER.warn("No group found, send HttpURLConnection.HTTP_FORBIDDEN");
                 sendErrorResponse(message, HttpURLConnection.HTTP_FORBIDDEN);
                 return;
             }
-            LOGGER.info("Group {} found", group);
+            LOGGER.info("User authorized via group {}, continue.", group);
 
             Subject subject = new Subject();
             subject.getPrincipals().add(p);
