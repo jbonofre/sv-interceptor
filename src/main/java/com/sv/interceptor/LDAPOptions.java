@@ -4,15 +4,13 @@ import org.apache.karaf.jaas.config.KeystoreManager;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.FrameworkUtil;
 import org.osgi.framework.ServiceReference;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.naming.ConfigurationException;
 import javax.naming.Context;
 import javax.naming.NamingException;
 import javax.net.ssl.SSLSocketFactory;
-import java.io.IOException;
-import java.net.Socket;
 import java.util.Dictionary;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -51,7 +49,8 @@ public class LDAPOptions {
     public static final String DEFAULT_INITIAL_CONTEXT_FACTORY = "com.sun.jndi.ldap.LdapCtxFactory";
     public static final String DEFAULT_AUTHENTICATION = "simple";
     public static final int DEFAULT_SSL_TIMEOUT = 10;
-    private static Logger LOGGER = LoggerFactory.getLogger(LDAPOptions.class);
+
+    private static Logger LOGGER = LogManager.getLogger(LDAPOptions.class);
 
     private final Map<String, ?> options;
 

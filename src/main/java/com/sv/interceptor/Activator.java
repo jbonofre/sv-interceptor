@@ -14,10 +14,9 @@ import org.osgi.service.cm.Configuration;
 import org.osgi.service.cm.ConfigurationAdmin;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
-import org.osgi.service.component.ComponentException;
 import org.osgi.util.tracker.ServiceTracker;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.naming.NamingException;
 import java.io.FileNotFoundException;
@@ -27,7 +26,7 @@ import java.util.Hashtable;
 
 public class Activator implements BundleActivator {
 
-    private final static Logger LOGGER = LoggerFactory.getLogger(Activator.class);
+    private final static Logger LOGGER = LogManager.getLogger(Activator.class);
 
     private final static String CONFIG_PID = "com.sv.interceptor.security";
     private final static String CONFIG_AUTH_PID = "com.sv.interceptor.security.ldap";
@@ -114,15 +113,15 @@ public class Activator implements BundleActivator {
             cache.close();
             LOGGER.info("Successfully connect to LDAP server");
         } catch(IOException e) {
-            LOGGER.error("FATAL : Cannot read LDAP configuration file (check {}.cfg)", CONFIG_AUTH_PID);
-            LOGGER.error("FATAL: Interceptor will block everything, need bundle restart.");
+            LOGGER.fatal("Cannot read LDAP configuration file (check {}.cfg)", CONFIG_AUTH_PID);
+            LOGGER.fatal("Interceptor will block everything, need bundle restart.");
         } catch (javax.naming.AuthenticationException ex) {
-            LOGGER.error("FATAL : " + ex.toString());
-            LOGGER.error("FATAL : Credentials seems to be wrong (check {}.cfg)", CONFIG_AUTH_PID);
-            LOGGER.error("FATAL: Interceptor will block everything, need bundle restart.");
+            LOGGER.fatal(ex.toString());
+            LOGGER.fatal("Credentials seems to be wrong (check {}.cfg)", CONFIG_AUTH_PID);
+            LOGGER.fatal("Interceptor will block everything, need bundle restart.");
         } catch(javax.naming.ConfigurationException ex) {
-            LOGGER.error("FATAL : " + ex.toString() + " (check {}.cfg)", CONFIG_AUTH_PID);
-            LOGGER.error("FATAL: Interceptor will block everything, need bundle restart.");
+            LOGGER.fatal(ex.toString() + " (check {}.cfg)", CONFIG_AUTH_PID);
+            LOGGER.fatal("Interceptor will block everything, need bundle restart.");
         } catch(NamingException ex) {
             LOGGER.warn(ex.toString());
             LOGGER.warn("Cannot connect to LDAP server;");

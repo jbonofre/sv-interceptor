@@ -14,16 +14,14 @@ import org.apache.cxf.phase.Phase;
 import org.apache.cxf.security.SecurityContext;
 import org.apache.cxf.transport.Conduit;
 import org.apache.cxf.transport.http.Headers;
-import org.apache.cxf.ws.addressing.EndpointReferenceType;
 import org.apache.wss4j.common.principal.WSUsernameTokenPrincipalImpl;
 import org.apache.wss4j.dom.WSConstants;
 import org.apache.wss4j.dom.handler.RequestData;
 import org.apache.wss4j.dom.message.token.UsernameToken;
 import org.apache.wss4j.dom.validate.Credential;
 import org.apache.wss4j.dom.validate.Validator;
-import org.osgi.framework.Constants;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.w3c.dom.Document;
 
 import javax.naming.Context;
@@ -43,7 +41,7 @@ import java.util.regex.Pattern;
  */
 public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
 
-    private final Logger LOGGER = LoggerFactory.getLogger(LDAPInterceptor.class);
+    private final Logger LOGGER = LogManager.getLogger(LDAPInterceptor.class);
 
     private Validator validator;
 
@@ -204,7 +202,7 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
             try {
                 ldapOptions = new LDAPOptions(options);
             } catch (java.lang.NullPointerException ex) {
-                LOGGER.error("FATAL : Cannot read LDAP configuration file, send HttpURLConnection.HTTP_INTERNAL_ERROR");
+                LOGGER.fatal("Cannot read LDAP configuration file, send HttpURLConnection.HTTP_INTERNAL_ERROR");
                 sendErrorResponse(message, HttpURLConnection.HTTP_INTERNAL_ERROR);
                 return;
             }
@@ -220,8 +218,8 @@ public class LDAPInterceptor extends AbstractPhaseInterceptor<Message> {
                     return;
                 }
             } catch (javax.naming.AuthenticationException e) {
-                LOGGER.error("FATAL : " + e.toString());
-                LOGGER.error("FATAL : Credentials seems to be wrong, send HttpURLConnection.HTTP_INTERNAL_ERROR");
+                LOGGER.fatal(e.toString());
+                LOGGER.fatal("Credentials seems to be wrong, send HttpURLConnection.HTTP_INTERNAL_ERROR");
                 sendErrorResponse(message, HttpURLConnection.HTTP_INTERNAL_ERROR);
                 return;
             } catch (Exception e) {

@@ -1,7 +1,7 @@
 package com.sv.interceptor;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -27,7 +27,7 @@ public class LDAPCache implements Closeable, NamespaceChangeListener, ObjectChan
 
     private static final ConcurrentMap<LDAPOptions, LDAPCache> CACHES = new ConcurrentHashMap<>();
 
-    private static Logger LOGGER = LoggerFactory.getLogger(LDAPCache.class);
+    private static Logger LOGGER = LogManager.getLogger(LDAPCache.class);
 
     public static void clear() {
         while (!CACHES.isEmpty()) {
