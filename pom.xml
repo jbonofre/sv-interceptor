@@ -10,7 +10,7 @@
 
     <properties>
         <camel.version>2.21.1</camel.version>
-        <cxf.version>3.2.1</cxf.version>
+        <cxf.version>3.4.10</cxf.version>
     </properties>
 
     <dependencies>
